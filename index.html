@@ -800,10 +800,16 @@
       document.getElementById('auth-gate').classList.add('hidden');
       document.getElementById('btn-logout').classList.remove('hidden');
       if (!unsubscribeFirestore) {
-        unsubscribeFirestore = db.collection('campaigns').onSnapshot(snapshot => {
-          campaigns = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-          rerender();
-        });
+        unsubscribeFirestore = db.collection('campaigns').onSnapshot(
+          snapshot => {
+            campaigns = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            rerender();
+          },
+          err => {
+            console.error('Firestore read error:', err);
+            alert('Tietokantavirhe (luku): ' + err.message);
+          }
+        );
       }
     } else {
       document.getElementById('auth-gate').classList.remove('hidden');
@@ -1124,15 +1130,28 @@
       return;
     }
 
-    await db.collection('campaigns').doc(id).set(data);
-    closeForm();
+    const btn = document.getElementById('form-submit-btn');
+    btn.disabled = true;
+    try {
+      await db.collection('campaigns').doc(id).set(data);
+      closeForm();
+    } catch (err) {
+      console.error('Firestore write error:', err);
+      alert('Tallennus epäonnistui: ' + err.message);
+    } finally {
+      btn.disabled = false;
+    }
   }
 
   async function deleteEditing() {
     if (!editingId) return;
     if (!confirm('Poistetaanko kampanja?')) return;
-    await db.collection('campaigns').doc(editingId).delete();
-    closeForm();
+    try {
+      await db.collection('campaigns').doc(editingId).delete();
+      closeForm();
+    } catch (err) {
+      alert('Poisto epäonnistui: ' + err.message);
+    }
   }
 
   // ── DETAIL MODAL ──────────────────────────────────
