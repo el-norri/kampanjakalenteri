@@ -32,8 +32,8 @@
 
     .hidden { display: none !important; }
 
-    /* ── PASSWORD GATE ── */
-    #pw-gate {
+    /* ── AUTH GATE ── */
+    #auth-gate {
       position: fixed;
       inset: 0;
       background: var(--primary);
@@ -44,29 +44,44 @@
       padding: 1rem;
     }
 
-    #pw-box {
+    #auth-box {
       background: var(--surface);
       border-radius: var(--r);
       padding: 2rem;
       width: 100%;
       max-width: 360px;
-      text-align: center;
       box-shadow: 0 8px 32px rgba(0,0,0,.2);
     }
 
-    #pw-box h2 {
+    #auth-box h2 {
       font-size: 1.3rem;
       font-weight: 700;
       margin-bottom: 0.5rem;
+      text-align: center;
     }
 
-    #pw-box .pw-sub {
+    #auth-box .auth-sub {
       color: var(--muted);
       font-size: 0.9rem;
       margin-bottom: 1.5rem;
+      text-align: center;
     }
 
-    #pw-input {
+    .login-field {
+      margin-bottom: 0.875rem;
+    }
+
+    .login-field label {
+      display: block;
+      font-size: 0.72rem;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      margin-bottom: 0.3rem;
+    }
+
+    .login-input {
       display: block;
       width: 100%;
       padding: 0.75rem;
@@ -74,17 +89,16 @@
       border-radius: var(--r);
       font-size: 1rem;
       font-family: inherit;
-      margin-bottom: 0.75rem;
+      color: var(--text);
+      background: var(--surface);
       outline: none;
-      text-align: center;
-      letter-spacing: .1em;
       min-height: 48px;
       -webkit-appearance: none;
       appearance: none;
     }
-    #pw-input:focus { border-color: var(--primary); }
+    .login-input:focus { border-color: var(--primary); }
 
-    #pw-submit {
+    #login-submit {
       background: var(--primary);
       color: #fff;
       border: none;
@@ -95,13 +109,16 @@
       cursor: pointer;
       width: 100%;
       min-height: 52px;
+      margin-top: 0.25rem;
     }
-    #pw-submit:active { opacity: .88; }
+    #login-submit:active { opacity: .88; }
+    #login-submit:disabled { opacity: .6; cursor: default; }
 
-    #pw-error {
+    #login-error {
       color: #dc2626;
       font-size: 0.85rem;
       margin-top: 0.75rem;
+      text-align: center;
     }
 
     /* ── HEADER ── */
@@ -120,6 +137,25 @@
     }
 
     header h1 { font-size: 1.15rem; font-weight: 700; letter-spacing: -.01em; }
+
+    .header-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .btn-logout {
+      background: rgba(255,255,255,.18);
+      color: #fff;
+      border: 1px solid rgba(255,255,255,.35);
+      border-radius: var(--r);
+      padding: 0.45rem 0.875rem;
+      font-weight: 600;
+      font-size: 0.8rem;
+      cursor: pointer;
+      min-height: 44px;
+    }
+    .btn-logout:active { background: rgba(255,255,255,.28); }
 
     .btn-add {
       background: #fff;
@@ -629,22 +665,32 @@
 </head>
 <body>
 
-<!-- PASSWORD GATE -->
-<div id="pw-gate">
-  <div id="pw-box">
+<!-- AUTH GATE -->
+<div id="auth-gate">
+  <div id="auth-box">
     <h2>Kampanjaseuranta</h2>
-    <p class="pw-sub">Syötä salasana jatkaaksesi</p>
-    <form onsubmit="unlockApp(event)">
-      <input id="pw-input" type="password" placeholder="Salasana" autocomplete="current-password">
-      <button type="submit" id="pw-submit">Kirjaudu</button>
-      <p id="pw-error" class="hidden">Väärä salasana</p>
+    <p class="auth-sub">Kirjaudu sisään jatkaaksesi</p>
+    <form onsubmit="signIn(event)">
+      <div class="login-field">
+        <label for="login-email">Sähköposti</label>
+        <input id="login-email" class="login-input" type="email" placeholder="nimi@yritys.fi" autocomplete="email" required>
+      </div>
+      <div class="login-field">
+        <label for="login-password">Salasana</label>
+        <input id="login-password" class="login-input" type="password" placeholder="••••••••" autocomplete="current-password" required>
+      </div>
+      <button type="submit" id="login-submit">Kirjaudu sisään</button>
+      <p id="login-error" class="hidden">Kirjautuminen epäonnistui. Tarkista sähköposti ja salasana.</p>
     </form>
   </div>
 </div>
 
 <header>
   <h1>Kampanjat</h1>
-  <button class="btn-add" onclick="openAdd()">+ Lisää</button>
+  <div class="header-actions">
+    <button class="btn-logout hidden" id="btn-logout" onclick="signOut()">Kirjaudu ulos</button>
+    <button class="btn-add" onclick="openAdd()">+ Lisää</button>
+  </div>
 </header>
 
 <div class="tabs">
@@ -727,30 +773,10 @@
 </div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 
 <script>
-  // ── PASSWORD GATE ──────────────────────────────────
-  const PASS = 'yourpassword';
-
-  function unlockApp(e) {
-    e.preventDefault();
-    if (document.getElementById('pw-input').value === PASS) {
-      sessionStorage.setItem('smf_unlocked', '1');
-      document.getElementById('pw-gate').classList.add('hidden');
-    } else {
-      document.getElementById('pw-error').classList.remove('hidden');
-      document.getElementById('pw-input').value = '';
-      document.getElementById('pw-input').focus();
-    }
-  }
-
-  if (sessionStorage.getItem('smf_unlocked') === '1') {
-    document.getElementById('pw-gate').classList.add('hidden');
-  } else {
-    setTimeout(() => document.getElementById('pw-input').focus(), 50);
-  }
-
   // ── FIREBASE ──────────────────────────────────────
   const firebaseConfig = {
     apiKey: "AIzaSyAQ8CTL3BLFZpjqvSNylCfFfc9_fz-lfNc",
@@ -763,7 +789,60 @@
   };
 
   firebase.initializeApp(firebaseConfig);
-  const db = firebase.firestore();
+  const auth = firebase.auth();
+  const db   = firebase.firestore();
+
+  // ── AUTH ──────────────────────────────────────────
+  let unsubscribeFirestore = null;
+
+  auth.onAuthStateChanged(user => {
+    if (user) {
+      document.getElementById('auth-gate').classList.add('hidden');
+      document.getElementById('btn-logout').classList.remove('hidden');
+      if (!unsubscribeFirestore) {
+        unsubscribeFirestore = db.collection('campaigns').onSnapshot(snapshot => {
+          campaigns = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          rerender();
+        });
+      }
+    } else {
+      document.getElementById('auth-gate').classList.remove('hidden');
+      document.getElementById('btn-logout').classList.add('hidden');
+      if (unsubscribeFirestore) {
+        unsubscribeFirestore();
+        unsubscribeFirestore = null;
+      }
+      campaigns = [];
+      setTimeout(() => document.getElementById('login-email').focus(), 50);
+    }
+  });
+
+  async function signIn(e) {
+    e.preventDefault();
+    const email    = document.getElementById('login-email').value.trim();
+    const password = document.getElementById('login-password').value;
+    const errEl    = document.getElementById('login-error');
+    const btn      = document.getElementById('login-submit');
+
+    errEl.classList.add('hidden');
+    btn.disabled    = true;
+    btn.textContent = 'Kirjaudutaan...';
+
+    try {
+      await auth.signInWithEmailAndPassword(email, password);
+      // onAuthStateChanged handles the rest
+    } catch (err) {
+      errEl.classList.remove('hidden');
+      document.getElementById('login-password').value = '';
+      document.getElementById('login-password').focus();
+      btn.disabled    = false;
+      btn.textContent = 'Kirjaudu sisään';
+    }
+  }
+
+  function signOut() {
+    auth.signOut();
+  }
 
   // ── DATA ──────────────────────────────────────────
   const STATUSES = ['Planned', 'In Progress', 'Live', 'Done'];
@@ -780,12 +859,6 @@
   let curMonth = new Date().getMonth();
   let curYear  = new Date().getFullYear();
   let editingId = null;
-
-  // Real-time listener — updates campaigns and rerenders on every change
-  db.collection('campaigns').onSnapshot(snapshot => {
-    campaigns = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    rerender();
-  });
 
   function uid() {
     return Date.now().toString(36) + Math.random().toString(36).slice(2);
@@ -956,7 +1029,6 @@
 
       const cardsEl = col.querySelector('.col-cards');
 
-      // Drop zone
       let dragCounter = 0;
       col.addEventListener('dragenter', e => {
         e.preventDefault();
@@ -975,7 +1047,6 @@
         const campaign = campaigns.find(x => x.id === id);
         if (campaign && campaign.status !== status) {
           db.collection('campaigns').doc(id).update({ status });
-          // onSnapshot will rerender
         }
       });
 
@@ -1055,7 +1126,6 @@
 
     await db.collection('campaigns').doc(id).set(data);
     closeForm();
-    // onSnapshot handles rerender
   }
 
   async function deleteEditing() {
@@ -1063,7 +1133,6 @@
     if (!confirm('Poistetaanko kampanja?')) return;
     await db.collection('campaigns').doc(editingId).delete();
     closeForm();
-    // onSnapshot handles rerender
   }
 
   // ── DETAIL MODAL ──────────────────────────────────
@@ -1108,14 +1177,12 @@
   function setStatus(id, status) {
     db.collection('campaigns').doc(id).update({ status });
     closeDetail();
-    // onSnapshot handles rerender
   }
 
   function deleteDetail(id) {
     if (!confirm('Poistetaanko kampanja?')) return;
     db.collection('campaigns').doc(id).delete();
     closeDetail();
-    // onSnapshot handles rerender
   }
 
   // ── UTILS ─────────────────────────────────────────
