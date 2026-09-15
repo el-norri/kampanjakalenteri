@@ -284,10 +284,21 @@
       letter-spacing: .03em;
     }
 
-    .month-grid {
+    /* week rows replace the flat month-grid */
+    .week-row {
+      border-left: 1px solid var(--border);
+    }
+
+    .week-days {
       display: grid;
       grid-template-columns: repeat(7, 1fr);
-      border-left: 1px solid var(--border);
+    }
+
+    .week-events {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      padding: 1px 1px 2px;
+      row-gap: 2px;
     }
 
     .cal-cell {
@@ -320,35 +331,24 @@
       border-radius: 50%;
     }
 
-    .cam-chip {
-      font-size: 0.57rem;
+    .cam-bar {
+      font-size: 0.6rem;
       font-weight: 600;
-      padding: 0 3px;
-      border-radius: 3px;
+      padding: 0 4px;
       color: #fff;
       cursor: pointer;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      margin-bottom: 1px;
-      max-width: 100%;
-      display: block;
-      line-height: 1.4;
+      line-height: 1.6;
+      min-width: 0;
     }
-    .cam-chip:active { opacity: .75; }
-
-    .more-chip {
-      font-size: 0.55rem;
-      color: var(--muted);
-      padding: 0 2px;
-      cursor: pointer;
-      line-height: 1.3;
-    }
+    .cam-bar:active { opacity: .75; }
 
     @media (max-width: 600px) {
       .cal-cell { min-height: 24px; }
       .day-num { width: 19px; height: 19px; font-size: 0.65rem; }
-      .cam-chip { font-size: 0.6rem; }
+      .cam-bar { font-size: 0.58rem; }
     }
 
     /* ── KANBAN ── */
@@ -916,27 +916,25 @@
     document.getElementById('cal-label').textContent =
       MONTHS_SHORT[curMonth] + ' ' + curYear + ' – ' + MONTHS_SHORT[endM] + ' ' + endY;
 
-    const todayStr = new Date().toISOString().slice(0, 10);
-    const byDate = {};
-    campaigns.forEach(c => {
-      (byDate[c.startDate] = byDate[c.startDate] || []).push(c);
-    });
+    // Use local date to avoid UTC-midnight timezone shift
+    const now = new Date();
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
 
     const container = document.getElementById('cal-months');
     container.innerHTML = '';
     for (let mi = 0; mi < 6; mi++) {
       const m = (curMonth + mi) % 12;
       const y = curYear + Math.floor((curMonth + mi) / 12);
-      container.appendChild(buildMonth(y, m, byDate, todayStr));
+      container.appendChild(buildMonth(y, m, campaigns, todayStr));
     }
   }
 
-  function buildMonth(year, month, byDate, todayStr) {
+  function buildMonth(year, month, campaigns, todayStr) {
     const firstDow    = new Date(year, month, 1).getDay();
-    const startOffset = (firstDow + 6) % 7;
+    const startOffset = (firstDow + 6) % 7;   // 0 = Monday
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const daysInPrev  = new Date(year, month, 0).getDate();
-    const total       = Math.ceil((startOffset + daysInMonth) / 7) * 7;
+    const numWeeks    = Math.ceil((startOffset + daysInMonth) / 7);
 
     const block = document.createElement('div');
     block.className = 'month-block';
@@ -956,60 +954,91 @@
     });
     block.appendChild(wds);
 
-    const grid = document.createElement('div');
-    grid.className = 'month-grid';
+    for (let w = 0; w < numWeeks; w++) {
+      const weekRow = document.createElement('div');
+      weekRow.className = 'week-row';
 
-    for (let i = 0; i < total; i++) {
-      let day, dm, dy, cur = true;
-      if (i < startOffset) {
-        day = daysInPrev - startOffset + i + 1;
-        dm = month - 1; dy = year;
-        if (dm < 0) { dm = 11; dy--; }
-        cur = false;
-      } else if (i >= startOffset + daysInMonth) {
-        day = i - startOffset - daysInMonth + 1;
-        dm = month + 1; dy = year;
-        if (dm > 11) { dm = 0; dy++; }
-        cur = false;
-      } else {
-        day = i - startOffset + 1;
-        dm = month; dy = year;
-      }
+      // ── Day number cells ──────────────────────────
+      const daysEl = document.createElement('div');
+      daysEl.className = 'week-days';
+      const weekDates = [];   // { dateStr, cur } for each of the 7 days
 
-      const dateStr = `${dy}-${String(dm+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
-
-      const cell = document.createElement('div');
-      cell.className = 'cal-cell' + (cur ? '' : ' other') + (dateStr === todayStr ? ' today' : '');
-      if (cur) cell.addEventListener('dblclick', () => openAdd(dateStr));
-
-      const num = document.createElement('div');
-      num.className = 'day-num';
-      num.textContent = day;
-      cell.appendChild(num);
-
-      if (cur) {
-        const cams = byDate[dateStr] || [];
-        cams.slice(0, 2).forEach(c => {
-          const chip = document.createElement('span');
-          chip.className = 'cam-chip';
-          chip.style.background = SC[c.status];
-          chip.textContent = c.name;
-          chip.onclick = () => openDetail(c.id);
-          cell.appendChild(chip);
-        });
-        if (cams.length > 2) {
-          const more = document.createElement('span');
-          more.className = 'more-chip';
-          more.textContent = '+' + (cams.length - 2);
-          more.onclick = () => openDetail(cams[2].id);
-          cell.appendChild(more);
+      for (let d = 0; d < 7; d++) {
+        const i = w * 7 + d;
+        let day, dm, dy, cur = true;
+        if (i < startOffset) {
+          day = daysInPrev - startOffset + i + 1;
+          dm = month - 1; dy = year;
+          if (dm < 0) { dm = 11; dy--; }
+          cur = false;
+        } else if (i >= startOffset + daysInMonth) {
+          day = i - startOffset - daysInMonth + 1;
+          dm = month + 1; dy = year;
+          if (dm > 11) { dm = 0; dy++; }
+          cur = false;
+        } else {
+          day = i - startOffset + 1;
+          dm = month; dy = year;
         }
+
+        const dateStr = `${dy}-${String(dm+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+        weekDates.push({ dateStr, cur });
+
+        const cell = document.createElement('div');
+        cell.className = 'cal-cell' + (cur ? '' : ' other') + (dateStr === todayStr ? ' today' : '');
+        if (cur) cell.addEventListener('dblclick', () => openAdd(dateStr));
+
+        const num = document.createElement('div');
+        num.className = 'day-num';
+        num.textContent = day;
+        cell.appendChild(num);
+        daysEl.appendChild(cell);
       }
 
-      grid.appendChild(cell);
+      weekRow.appendChild(daysEl);
+
+      // ── Campaign bars ─────────────────────────────
+      // Dates are YYYY-MM-DD strings; lexicographic comparison is correct for ISO dates
+      const weekStart = weekDates[0].dateStr;
+      const weekEnd   = weekDates[6].dateStr;
+
+      const weekCams = campaigns.filter(c =>
+        c.startDate <= weekEnd && c.endDate >= weekStart
+      );
+
+      if (weekCams.length > 0) {
+        const eventsEl = document.createElement('div');
+        eventsEl.className = 'week-events';
+
+        weekCams.forEach(c => {
+          // Clip campaign to the visible week
+          const barStart = c.startDate > weekStart ? c.startDate : weekStart;
+          const barEnd   = c.endDate   < weekEnd   ? c.endDate   : weekEnd;
+
+          const colStart = weekDates.findIndex(d => d.dateStr === barStart);
+          const colEnd   = weekDates.findIndex(d => d.dateStr === barEnd);
+
+          // Square left edge when bar continues from a previous week;
+          // square right edge when it continues into the next week
+          const rL = c.startDate >= weekStart ? '3px' : '0';
+          const rR = c.endDate   <= weekEnd   ? '3px' : '0';
+
+          const bar = document.createElement('div');
+          bar.className = 'cam-bar';
+          bar.style.background    = SC[c.status];
+          bar.style.gridColumn    = `${colStart + 1} / ${colEnd + 2}`;
+          bar.style.borderRadius  = `${rL} ${rR} ${rR} ${rL}`;
+          bar.textContent         = c.name;
+          bar.onclick             = () => openDetail(c.id);
+          eventsEl.appendChild(bar);
+        });
+
+        weekRow.appendChild(eventsEl);
+      }
+
+      block.appendChild(weekRow);
     }
 
-    block.appendChild(grid);
     return block;
   }
 
